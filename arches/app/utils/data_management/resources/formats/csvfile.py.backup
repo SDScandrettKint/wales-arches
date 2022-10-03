@@ -95,113 +95,97 @@ class CsvWriter(Writer):
         csv_header = ["ResourceID"] + list(mapping.values())
         csvs_for_export = []
 
+        for resourceinstanceid, tiles in self.resourceinstances.items():
+            csv_record = {}
+            csv_record["ResourceID"] = resourceinstanceid
+            csv_record["populated_node_groups"] = []
 
-        with open("export_data.csv", 'w') as f:
-            newwriter = csv.DictWriter(f, delimiter=",", fieldnames=csv_header)
-            newwriter.writeheader() # Headings from mapping file
+            try:
+                parents = [p for p in tiles if p.parenttile_id is None]
+                children = [c for c in tiles if c.parenttile_id is not None]
+                tiles = parents + sorted(children, key=lambda k: k.parenttile_id)
+            except Exception as e:
+                logger.exception(e)
 
-            for resourceinstanceid, tiles in self.resourceinstances.items():
-                csv_record = {}
-                csv_record["ResourceID"] = resourceinstanceid
-                csv_record["populated_node_groups"] = []
-
-                try:
-                    parents = [p for p in tiles if p.parenttile_id is None]
-                    children = [c for c in tiles if c.parenttile_id is not None]
-                    tiles = parents + sorted(children, key=lambda k: k.parenttile_id)
-                except Exception as e:
-                    logger.exception(e)
-
-                for tile in tiles:
-                    other_group_record = {}
-                    other_group_record["ResourceID"] = resourceinstanceid
-                    if tile.data != {}:
-                        for k in list(tile.data.keys()):
-                            if tile.data[k] != "" and k in mapping and tile.data[k] is not None:
-                                if mapping[k] not in csv_record and tile.nodegroup_id not in csv_record["populated_node_groups"]:
-                                    concept_export_value_type = None
-                                    if k in concept_export_value_lookup:
-                                        concept_export_value_type = concept_export_value_lookup[k]
-                                        
-                                    if tile.data[k] is not None:
-                                        value = self.transform_value_for_export(
-                                            self.node_datatypes[k], tile.data[k], concept_export_value_type, k
-                                        )
-                                        csv_record[mapping[k]] = value
-                                    del tile.data[k]
-                                else:
-                                    concept_export_value_type = None
-                                    if k in concept_export_value_lookup:
-                                        concept_export_value_type = concept_export_value_lookup[k]
+            for tile in tiles:
+                other_group_record = {}
+                other_group_record["ResourceID"] = resourceinstanceid
+                if tile.data != {}:
+                    for k in list(tile.data.keys()):
+                        if tile.data[k] != "" and k in mapping and tile.data[k] is not None:
+                            if mapping[k] not in csv_record and tile.nodegroup_id not in csv_record["populated_node_groups"]:
+                                concept_export_value_type = None
+                                if k in concept_export_value_lookup:
+                                    concept_export_value_type = concept_export_value_lookup[k]
+                                if tile.data[k] is not None:
                                     value = self.transform_value_for_export(
-                                        self.node_datatypes[k],
-                                        tile.data[k],
-                                        concept_export_value_type,
-                                        k,
+                                        self.node_datatypes[k], tile.data[k], concept_export_value_type, k
                                     )
-                                    other_group_record[mapping[k]] = value
-                            else:
+                                    csv_record[mapping[k]] = value
                                 del tile.data[k]
+                            else:
+                                concept_export_value_type = None
+                                if k in concept_export_value_lookup:
+                                    concept_export_value_type = concept_export_value_lookup[k]
+                                value = self.transform_value_for_export(
+                                    self.node_datatypes[k],
+                                    tile.data[k],
+                                    concept_export_value_type,
+                                    k,
+                                )
+                                other_group_record[mapping[k]] = value
+                        else:
+                            del tile.data[k]
 
-                        csv_record["populated_node_groups"].append(tile.nodegroup_id)
+                    csv_record["populated_node_groups"].append(tile.nodegroup_id)
 
-                    if other_group_record != {"ResourceID": resourceinstanceid}:
-                        continue
-                        # Don't want a huge list of other group records
-                        #other_group_records.append(other_group_record)
+                if other_group_record != {"ResourceID": resourceinstanceid}:
+                    other_group_records.append(other_group_record)
 
-                if csv_record != {"ResourceID": resourceinstanceid}:
-                    if "populated_node_groups" in csv_record:
-                        del csv_record["populated_node_groups"]
+            if csv_record != {"ResourceID": resourceinstanceid}:
+                csv_records.append(csv_record)
 
-                    newwriter.writerow({k: str(v) for k, v in list(csv_record.items())}) 
-                    
-                    # csv_records contains each record
-                    #csv_records.append(csv_record)
-                    # Comment it out to prevent huge list creation
+        csv_name = os.path.join("{0}.{1}".format(self.file_name, "csv"))
 
-            csv_name = os.path.join("{0}.{1}".format(self.file_name, "csv"))
+        if self.single_file is not True:
+            dest = StringIO()
+            csvwriter = csv.DictWriter(dest, delimiter=",", fieldnames=csv_header)
+            csvwriter.writeheader()
+            csvs_for_export.append({"name": csv_name, "outputfile": dest})
+            for csv_record in csv_records:
+                if "populated_node_groups" in csv_record:
+                    del csv_record["populated_node_groups"]
+                csvwriter.writerow({k: str(v) for k, v in list(csv_record.items())})
 
-            if self.single_file is not True:
-                dest = StringIO()
-                csvwriter = csv.DictWriter(dest, delimiter=",", fieldnames=csv_header)
-                csvwriter.writeheader()
-                csvs_for_export.append({"name": csv_name, "outputfile": dest})
-                
-                for csv_record in csv_records:
-                    csvwriter.writerow({k: str(v) for k, v in list(csv_record.items())})
+            dest = StringIO()
+            csvwriter = csv.DictWriter(dest, delimiter=",", fieldnames=csv_header)
+            csvwriter.writeheader()
+            csvs_for_export.append(
+                {
+                    "name": csv_name.split(".")[0] + "_groups." + csv_name.split(".")[1],
+                    "outputfile": dest,
+                }
+            )
+            for csv_record in other_group_records:
+                if "populated_node_groups" in csv_record:
+                    del csv_record["populated_node_groups"]
+                csvwriter.writerow({k: str(v) for k, v in list(csv_record.items())})
+        elif self.single_file == True:
+            all_records = csv_records + other_group_records
+            all_records = sorted(all_records, key=lambda k: k["ResourceID"])
+            dest = StringIO()
+            csvwriter = csv.DictWriter(dest, delimiter=",", fieldnames=csv_header)
+            csvwriter.writeheader()
+            csvs_for_export.append({"name": csv_name, "outputfile": dest})
+            for csv_record in all_records:
+                if "populated_node_groups" in csv_record:
+                    del csv_record["populated_node_groups"]
+                csvwriter.writerow({k: str(v) for k, v in list(csv_record.items())})
 
-                dest = StringIO()
-                csvwriter = csv.DictWriter(dest, delimiter=",", fieldnames=csv_header)
-                csvwriter.writeheader()
-                csvs_for_export.append(
-                    {
-                        "name": csv_name.split(".")[0] + "_groups." + csv_name.split(".")[1],
-                        "outputfile": dest,
-                    }
-                )
-                for csv_record in other_group_records:
-                    if "populated_node_groups" in csv_record:
-                        del csv_record["populated_node_groups"]
-                    csvwriter.writerow({k: str(v) for k, v in list(csv_record.items())})
+        if self.graph_id is not None:
+            csvs_for_export = csvs_for_export + self.write_resource_relations(file_name=self.file_name)
 
-                    
-            elif self.single_file == True:
-                all_records = csv_records + other_group_records
-                all_records = sorted(all_records, key=lambda k: k["ResourceID"])
-                dest = StringIO()
-                csvwriter = csv.DictWriter(dest, delimiter=",", fieldnames=csv_header)
-                csvwriter.writeheader()
-                csvs_for_export.append({"name": csv_name, "outputfile": dest})
-                for csv_record in all_records:
-                    if "populated_node_groups" in csv_record:
-                        del csv_record["populated_node_groups"]
-                    csvwriter.writerow({k: str(v) for k, v in list(csv_record.items())})
-
-            if self.graph_id is not None:
-                csvs_for_export = csvs_for_export + self.write_resource_relations(file_name=self.file_name)
-
-            #return csvs_for_export
+        return csvs_for_export
 
     def write_resource_relations(self, file_name):
         resourceids = list(self.resourceinstances.keys())

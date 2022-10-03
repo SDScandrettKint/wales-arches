@@ -134,6 +134,8 @@ class TileData(View):
 
                 tile = Tile(data)
 
+                logger.error( "BEFORE" + tile_id)
+
                 if tile.filter_by_perm(request.user, "write_nodegroup") and is_active is True:
                     try:
                         with transaction.atomic():

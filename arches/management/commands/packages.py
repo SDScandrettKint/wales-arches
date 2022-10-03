@@ -1022,19 +1022,19 @@ class Command(BaseCommand):
                         file_format, configs=config_file, single_file=single_file
                     )  # New exporter needed for each graphid, else previous data is appended with each subsequent graph
                     data = resource_exporter.export(graph_id=graphid, resourceinstanceids=None)
-                    for file in data:
-                        with open(
-                            os.path.join(
-                                data_dest,
-                                "".join(char if (char.isalnum() or char in safe_characters) else "-" for char in file["name"]).rstrip(),
-                            ),
-                            "w",
-                        ) as f:
-                            if file_format == "tilexl":
-                                file["outputfile"].save(os.path.join(data_dest, file["name"]))
-                            else:
-                                file["outputfile"].seek(0)
-                                shutil.copyfileobj(file["outputfile"], f, 16 * 1024)
+                    #for file in data:
+                    #    with open(
+                    #        os.path.join(
+                    #            data_dest,
+                    #            "".join(char if (char.isalnum() or char in safe_characters) else "-" for char in file["name"]).rstrip(),
+                    #        ),
+                    #        "w",
+                    #    ) as f:
+                    #        if file_format == "tilexl":
+                    #            file["outputfile"].save(os.path.join(data_dest, file["name"]))
+                    #        else:
+                    #            file["outputfile"].seek(0)
+                    #            shutil.copyfileobj(file["outputfile"], f, 16 * 1024)
                 except KeyError:
                     utils.print_message("{0} is not a valid export file format.".format(file_format))
                     sys.exit()
