@@ -304,9 +304,6 @@ class Command(BaseCommand):
                 # index concepts if new concepts created
                 if concept_count != models.Value.objects.count():
                     management.call_command("es", "index_concepts")
-                # index relations if new relations created via new r-i tiles created
-                if relation_count != models.ResourceXResource.objects.count():
-                    management.call_command("es", "index_resource_relations")
                 # index resources of this model only
                 path = utils.get_valid_path(options["config_file"])
                 mapping = json.load(open(path, "r"))
@@ -846,9 +843,6 @@ class Command(BaseCommand):
 
         def load_etl_modules(package_dir):
             load_extensions(package_dir, "etl_modules", "etl_module")
-
-        def cache_graphs():
-            management.call_command("cache", operation="graphs")
 
         def update_resource_geojson_geometries():
             with connection.cursor() as cursor:

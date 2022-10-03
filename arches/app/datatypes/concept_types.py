@@ -1,6 +1,7 @@
 from arches.app.utils.betterJSONSerializer import JSONSerializer
 import uuid
 import csv
+import logging
 from django.core.exceptions import ObjectDoesNotExist
 from django.utils.translation import ugettext as _
 from arches.app.models import models
@@ -22,12 +23,14 @@ from io import StringIO
 archesproject = Namespace(settings.ARCHES_NAMESPACE_FOR_DATA_EXPORT)
 cidoc_nm = Namespace("http://www.cidoc-crm.org/cidoc-crm/")
 
+logger = logging.getLogger(__name__)
 
 class BaseConceptDataType(BaseDataType):
     def __init__(self, model=None):
         super(BaseConceptDataType, self).__init__(model=model)
         self.value_lookup = {}
         self.collection_lookup = {}
+        self.collection_by_node_lookup = {}
 
     def lookup_label(self, label, collectionid):
         ret = label
@@ -37,7 +40,16 @@ class BaseConceptDataType(BaseDataType):
                 ret = concept[2]
         return ret
 
-    def lookup_labelid_from_label(self, value, collectionid):
+    def lookup_labelid_from_label(self, value, config):
+        if "rdmCollection" in config:
+            collectionid = config["rdmCollection"]
+        elif "nodeid" in config:
+            nodeid = config["nodeid"]
+            if nodeid in self.collection_by_node_lookup:
+                collectionid = self.collection_by_node_lookup[nodeid]
+            else:
+                collectionid = models.Node.objects.get(nodeid=nodeid).config["rdmCollection"]
+                self.collection_by_node_lookup[nodeid] = collectionid
         try:
             result = self.lookup_label(value, collectionid)
         except KeyError:
@@ -121,7 +133,7 @@ class BaseConceptDataType(BaseDataType):
 
 
 class ConceptDataType(BaseConceptDataType):
-    def validate(self, value, row_number=None, source="", node=None, nodeid=None, strict=False):
+    def validate(self, value, row_number=None, source="", node=None, nodeid=None, strict=False, **kwargs):
         errors = []
         # first check to see if the validator has been passed a valid UUID,
         # which should be the case at this point. return error if not.
@@ -155,8 +167,13 @@ class ConceptDataType(BaseConceptDataType):
             uuid.UUID(stripped)
             value = stripped
         except ValueError:
-            if "rdmCollection" in kwargs:
-                value = self.lookup_labelid_from_label(value, kwargs["rdmCollection"])
+            if value == "":
+                value = None
+            else:
+                try:
+                    value = self.lookup_labelid_from_label(value, kwargs)
+                except:
+                    logger.warn(_("Unable to convert {0} to concept label".format(value)))
         return value
 
     def transform_export_values(self, value, *args, **kwargs):
@@ -267,13 +284,12 @@ class ConceptDataType(BaseConceptDataType):
             # No concept_id means not in RDM at all
             return None
 
-
     def ignore_keys(self):
         return ["http://www.w3.org/2000/01/rdf-schema#label http://www.w3.org/2000/01/rdf-schema#Literal"]
 
 
 class ConceptListDataType(BaseConceptDataType):
-    def validate(self, value, row_number=None, source="", node=None, nodeid=None, strict=False):
+    def validate(self, value, row_number=None, source="", node=None, nodeid=None, strict=False, **kwargs):
         errors = []
 
         # iterate list of values and use the concept validation on each one
@@ -287,14 +303,21 @@ class ConceptListDataType(BaseConceptDataType):
     def transform_value_for_tile(self, value, **kwargs):
         ret = []
         for val in csv.reader([value], delimiter=",", quotechar='"'):
-            for v in val:
+            lines = [line for line in val]
+            for v in lines:
                 try:
                     stripped = v.strip()
                     uuid.UUID(stripped)
                     ret.append(stripped)
                 except ValueError:
-                    if "rdmCollection" in kwargs:
-                        ret.append(self.lookup_labelid_from_label(v, kwargs["rdmCollection"]))
+                    if v == "":
+                        continue
+                    else:
+                        try:
+                            ret.append(self.lookup_labelid_from_label(v, kwargs))
+                        except:
+                            ret.append(v)
+                            logger.warn(_("Unable to convert {0} to concept label".format(v)))
         return ret
 
     def transform_export_values(self, value, *args, **kwargs):

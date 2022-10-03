@@ -16,7 +16,7 @@ You should have received a copy of the GNU Affero General Public License
 along with this program. If not, see <http://www.gnu.org/licenses/>.
 -->
 {% extends "base-manager.htm" %}
-{% load staticfiles %}
+{% load static %}
 {% load i18n %}
 
 {% block title %}
@@ -125,10 +125,8 @@ along with this program. If not, see <http://www.gnu.org/licenses/>.
                             </li>
                             <li><a href="#" data-bind="click:clone">{% trans "Clone Model" %}</a>
                             </li>
-                            <!-- ko if: _.contains($parent.protectedGraphs, graphid) === false  -->
                             <li><a href="#" data-bind="click:deleteGraph">{% trans "Delete Model" %}</a>
                             </li>
-                            <!--/ko-->
                         </ul>
                     </div>
                     <div>
